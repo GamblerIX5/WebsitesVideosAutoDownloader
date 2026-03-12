@@ -1,0 +1,108 @@
+"""
+流水线管理
+"""
+
+import logging
+from typing import Optional
+
+from core.plugin import PluginRegistry
+from core.models import PipelineResult
+from config.settings import Config
+
+logger = logging.getLogger("pipeline")
+
+
+class Pipeline:
+    """数据处理流水线"""
+
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config()
+        self.fetcher: Optional[PluginRegistry] = None
+        self.classifier: Optional[PluginRegistry] = None
+        self.downloader: Optional[PluginRegistry] = None
+
+        self._load_plugins()
+        self._init_plugins()
+
+    def _load_plugins(self) -> None:
+        """加载所有插件"""
+        from plugins.fetcher import mihoyo  # noqa: F401
+        from plugins.classifier import rule_based  # noqa: F401
+        from plugins.downloader import playwright  # noqa: F401
+
+    def _init_plugins(self) -> None:
+        """初始化插件实例"""
+        fetcher_config = self.config.get("fetcher", {})
+        classifier_config = self.config.get("classifier", {})
+        downloader_config = self.config.get("downloader", {})
+
+        self.fetcher = PluginRegistry.create(
+            fetcher_config.get("plugin", "mihoyo"),
+            base_url=fetcher_config.get("base_url", "https://sr.mihoyo.com"),
+            proxy=self.config.get_proxy(),
+        )
+
+        self.classifier = PluginRegistry.create(
+            classifier_config.get("plugin", "rule_based")
+        )
+
+        self.downloader = PluginRegistry.create(
+            downloader_config.get("plugin", "playwright"),
+            output_dir=downloader_config.get("output_dir", "downloads"),
+            max_concurrent=downloader_config.get("max_concurrent", 3),
+            retry_count=downloader_config.get("retry_count", 3),
+            timeout=downloader_config.get("timeout", 60),
+            proxy=self.config.get_proxy(),
+        )
+
+    async def run(self, headless: bool = True) -> PipelineResult:
+        """
+        执行完整流水线
+
+        Args:
+            headless: 是否使用无头模式
+
+        Returns:
+            流水线执行结果
+        """
+        logger.info("=" * 50)
+        logger.info("  阶段 1 / 3：抓取新闻列表")
+        logger.info("=" * 50)
+
+        news_items = await self.fetcher.execute(headless=headless)
+        result = PipelineResult(news_count=len(news_items))
+
+        if not news_items:
+            logger.warning("未抓取到任何新闻")
+            return result
+
+        logger.info("共抓取 %d 条新闻", len(news_items))
+
+        logger.info("=" * 50)
+        logger.info("  阶段 2 / 3：分类筛选")
+        logger.info("=" * 50)
+
+        classified = await self.classifier.execute(news_items, headless=headless)
+        result.classified_categories = {
+            cat: len(items) for cat, items in classified.items()
+        }
+
+        logger.info("分类完成：%d 个类别", len(classified))
+
+        logger.info("=" * 50)
+        logger.info("  阶段 3 / 3：视频下载")
+        logger.info("=" * 50)
+
+        download_results = await self.downloader.execute(classified, headless=headless)
+        result.download_results = download_results
+
+        logger.info("=" * 50)
+        logger.info(
+            "✅ 流水线完成：成功 %d，跳过 %d，失败 %d",
+            result.downloaded,
+            result.skipped,
+            result.failed,
+        )
+        logger.info("=" * 50)
+
+        return result
