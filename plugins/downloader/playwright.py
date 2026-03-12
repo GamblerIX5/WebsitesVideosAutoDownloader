@@ -37,6 +37,35 @@ class PlaywrightDownloader(DownloaderPlugin):
         description="基于 Playwright 的视频下载器",
     )
 
+    def __init__(
+        self,
+        output_dir: str = "downloads",
+        max_concurrent: int = 1,
+        retry_count: int = 3,
+        timeout: int = 60,
+        proxy: Optional[str] = None,
+        resume: bool = False,
+        **kwargs: Any,
+    ):
+        super().__init__(
+            output_dir=output_dir,
+            max_concurrent=max_concurrent,
+            retry_count=retry_count,
+            timeout=timeout,
+            proxy=proxy,
+            resume=resume,
+        )
+        self._shutdown_requested = False
+
+    def request_shutdown(self) -> None:
+        """请求关闭"""
+        self._shutdown_requested = True
+        logger.info("已请求关闭，将保存进度并退出...")
+
+    def is_shutdown_requested(self) -> bool:
+        """检查是否已请求关闭"""
+        return self._shutdown_requested
+
     async def download(
         self, items: Dict[str, List[NewsItem]], headless: bool = True, **kwargs: Any
     ) -> List[DownloadResult]:
@@ -76,6 +105,8 @@ class PlaywrightDownloader(DownloaderPlugin):
 
                 async def process_item(item: NewsItem) -> None:
                     async with semaphore:
+                        if self.is_shutdown_requested():
+                            return
                         result = await self._process_item(context, item)
                         results.append(result)
 
@@ -103,8 +134,24 @@ class PlaywrightDownloader(DownloaderPlugin):
         self, context: Any, item: NewsItem
     ) -> DownloadResult:
         """处理单个新闻项"""
-        video_url = await self._discover_video_url(context, item)
+        output_path = self._build_output_path(item)
         item_category = item.category or ""
+
+        # resume 模式：检查文件是否已存在
+        if self.resume and output_path.exists():
+            logger.info("  跳过已下载：%s", item.title)
+            return DownloadResult(
+                title=item.title,
+                url=item.url,
+                category=item_category,
+                video_url="",
+                local_path=output_path,
+                status="skipped",
+                bytes_written=0,
+                remote_size=output_path.stat().st_size,
+            )
+
+        video_url = await self._discover_video_url(context, item)
 
         if not video_url:
             return DownloadResult(
@@ -116,8 +163,6 @@ class PlaywrightDownloader(DownloaderPlugin):
                 status="failed",
                 error="未找到视频 URL",
             )
-
-        output_path = self._build_output_path(item)
 
         try:
             result = await self._download_file(video_url, output_path)

@@ -15,8 +15,9 @@ logger = logging.getLogger("pipeline")
 class Pipeline:
     """数据处理流水线"""
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, resume: bool = False):
         self.config = config or Config()
+        self.resume = resume
         self.fetcher: Optional[PluginRegistry] = None
         self.classifier: Optional[PluginRegistry] = None
         self.downloader: Optional[PluginRegistry] = None
@@ -40,6 +41,7 @@ class Pipeline:
             fetcher_config.get("plugin", "mihoyo"),
             base_url=fetcher_config.get("base_url", "https://sr.mihoyo.com"),
             proxy=self.config.get_proxy(),
+            resume=self.resume,
         )
 
         self.classifier = PluginRegistry.create(
@@ -49,10 +51,11 @@ class Pipeline:
         self.downloader = PluginRegistry.create(
             downloader_config.get("plugin", "playwright"),
             output_dir=downloader_config.get("output_dir", "downloads"),
-            max_concurrent=downloader_config.get("max_concurrent", 3),
+            max_concurrent=downloader_config.get("max_concurrent", 1),
             retry_count=downloader_config.get("retry_count", 3),
             timeout=downloader_config.get("timeout", 60),
             proxy=self.config.get_proxy(),
+            resume=self.resume,
         )
 
     async def run(self, headless: bool = True) -> PipelineResult:
@@ -93,7 +96,14 @@ class Pipeline:
         logger.info("  阶段 3 / 3：视频下载")
         logger.info("=" * 50)
 
-        download_results = await self.downloader.execute(classified, headless=headless)
+        # 只下载 videos 分类下的视频
+        video_items = {
+            cat: items for cat, items in classified.items()
+            if cat.startswith("videos/")
+        }
+        logger.info("过滤后：%d 个视频分类待下载", len(video_items))
+
+        download_results = await self.downloader.execute(video_items, headless=headless)
         result.download_results = download_results
 
         logger.info("=" * 50)

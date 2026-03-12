@@ -26,7 +26,7 @@ class Config:
         "downloader": {
             "plugin": "playwright",
             "output_dir": "downloads",
-            "max_concurrent": 3,
+            "max_concurrent": 1,
             "retry_count": 3,
             "timeout": 60,
         },

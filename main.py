@@ -6,12 +6,17 @@ WebsitesVideosAutoDownloader - 网站视频自动下载工具
 
 import argparse
 import asyncio
+import signal
 import sys
 from pathlib import Path
 
 from core.pipeline import Pipeline
 from config.settings import Config
 from utils.logging_config import setup_logging
+
+
+# 全局 pipeline 引用，用于信号处理
+_pipeline: Pipeline = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,14 +54,28 @@ def parse_args() -> argparse.Namespace:
         help="日志级别"
     )
     parser.add_argument("--log-file", type=str, help="日志文件路径")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="断点续传模式：跳过已抓取和已下载的内容"
+    )
     return parser.parse_args()
+
+
+def signal_handler(signum, frame):
+    """信号处理函数"""
+    print("\n收到中断信号，正在停止...")
+    if _pipeline and hasattr(_pipeline.downloader, 'request_shutdown'):
+        _pipeline.downloader.request_shutdown()
 
 
 def main() -> None:
     """主函数"""
+    global _pipeline
+    
     args = parse_args()
 
-    log_file = args.log_file or "run.log"
+    log_file = args.log_file or None
     setup_logging(log_level=args.log_level, log_file=log_file)
 
     config = Config(args.config) if args.config else Config()
@@ -67,10 +86,14 @@ def main() -> None:
         os.environ["HTTPS_PROXY"] = args.proxy
 
     headless = not args.no_headless
-    pipeline = Pipeline(config)
+    _pipeline = Pipeline(config, resume=args.resume)
+
+    # 注册信号处理
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        result = asyncio.run(pipeline.run(headless=headless))
+        result = asyncio.run(_pipeline.run(headless=headless))
 
         if result.news_count == 0:
             print("未抓取到任何新闻，请检查网络连接或代理设置")

@@ -55,6 +55,7 @@ WebsitesVideosAutoDownloader/
 | `--limit`, `-l` | 限制下载数量（测试用） |
 | `--log-level` | 日志级别 (DEBUG/INFO/WARNING/ERROR) |
 | `--log-file` | 日志文件路径 |
+| `--resume` | 断点续传模式：跳过已抓取和已下载的内容 |
 
 ## 配置说明
 
@@ -71,14 +72,29 @@ classifier:
 downloader:
   plugin: "playwright"
   output_dir: "downloads"
-  max_concurrent: 3
+  max_concurrent: 1  # 并发数（默认 1，避免风控）
   retry_count: 3
   timeout: 60
 ```
 
 ## 日志
 
-运行时会在 `run.log` 生成详细日志，包含时间戳和 DEBUG 级别信息。
+运行时会在 `logs/` 目录下生成带时间戳的日志文件（如 `logs/run_20260312_180000.log`），避免日志被意外覆盖。
+
+## 断点续传
+
+使用 `--resume` 参数可跳过已抓取和已下载的内容：
+
+```bash
+# 首次下载
+python main.py
+
+# 中断后继续下载（跳过已完成的内容）
+python main.py --resume
+```
+
+- **抓取缓存**：已抓取的新闻 URL 会保存到 `cache/fetch_cache.json`
+- **下载缓存**：已下载的视频文件会通过检查文件是否存在来跳过
 
 ## 架构设计
 

@@ -135,6 +135,21 @@ class MihoyoFetcher(FetcherPlugin):
                     if item.get("title")
                 ]
 
+                # resume 模式：过滤已缓存的 URL
+                if self.resume:
+                    original_count = len(news_items)
+                    news_items = [
+                        item for item in news_items
+                        if not self._is_url_cached(item.url)
+                    ]
+                    filtered_count = original_count - len(news_items)
+                    if filtered_count > 0:
+                        logger.info("跳过 %d 条已抓取的新闻 (resume 模式)", filtered_count)
+
+                # 缓存新抓取的 URL
+                for item in news_items:
+                    self._add_to_cache(item.url)
+
                 logger.info("共抓取 %d 条新闻", len(news_items))
                 return news_items
 
