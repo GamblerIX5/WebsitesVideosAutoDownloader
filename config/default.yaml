@@ -5,7 +5,7 @@ log_level: "INFO"
 
 # 抓取器配置
 fetcher:
-  plugin: "mihoyo"
+  plugin: "sr.mihoyo.com"
   base_url: "https://sr.mihoyo.com"
   news_path: "/news?nav=news"
 

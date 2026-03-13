@@ -1,6 +1,6 @@
 """抓取器插件模块"""
 
 from .base import FetcherPlugin
-from .mihoyo import MihoyoFetcher
+from .sr_mihoyo_com import SrMihoyoComFetcher
 
-__all__ = ["FetcherPlugin", "MihoyoFetcher"]
+__all__ = ["FetcherPlugin", "SrMihoyoComFetcher"]

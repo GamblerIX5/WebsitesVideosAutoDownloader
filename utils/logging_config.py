@@ -9,6 +9,16 @@ from pathlib import Path
 from typing import Optional
 
 
+class FlushOnExitHandler(logging.Handler):
+    """在程序退出时刷新日志的处理器"""
+    
+    def emit(self, record):
+        try:
+            self.flush()
+        except Exception:
+            pass
+
+
 def setup_logging(
     log_level: str = "INFO",
     log_file: Optional[str] = None,
@@ -30,9 +40,11 @@ def setup_logging(
     logger.handlers.clear()
 
     formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
 
+    # 控制台处理器
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
@@ -50,10 +62,20 @@ def setup_logging(
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # 文件处理器
     file_handler = logging.FileHandler(log_path, encoding="utf-8", mode="w")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
+    # 记录日志文件路径（使用 root logger 直接记录）
     logging.info("日志文件：%s", log_path)
-    return logger
+    
+    return logging.getLogger(__name__)
+
+
+def shutdown_logging():
+    """
+    关闭日志系统，确保所有日志已刷新到文件
+    """
+    logging.shutdown()
